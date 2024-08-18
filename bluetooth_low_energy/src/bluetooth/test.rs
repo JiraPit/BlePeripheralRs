@@ -11,7 +11,9 @@ mod bluetooth_test {
         }
 
         // Create a new BLE peripheral.
-        let mut ble = BlePeripheral::new(None).await.unwrap();
+        let mut ble = BlePeripheral::new(Some("TESTER".to_string()))
+            .await
+            .unwrap();
 
         // Start the BLE peripheral engine.
         ble.start_engine().await.unwrap();
@@ -21,7 +23,7 @@ mod bluetooth_test {
 
         // Asumming that the central device will send the same exact message back to the peripheral
 
-        // Wait for the message to be received by the central device.
+        // Wait for the same message to be received.
         let message = ble.receive_message().await;
         assert_eq!(message.as_string(), "test");
 
