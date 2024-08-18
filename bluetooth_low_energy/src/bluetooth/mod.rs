@@ -70,6 +70,8 @@ impl BlePeripheral {
         let session = Session::new().await?;
         let adapter = session.default_adapter().await?;
         adapter.set_powered(true).await?;
+        adapter.set_discoverable(true).await.unwrap();
+        adapter.set_discoverable_timeout(0).await.unwrap();
 
         // Configure the advertisement
         let adv = Advertisement {

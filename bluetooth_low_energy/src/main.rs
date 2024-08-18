@@ -2,16 +2,11 @@ mod bluetooth;
 
 use bluetooth::message::BleMessage;
 use bluetooth::BlePeripheral;
+use std::vec::Vec;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
-
-    // Check if the user wants to run this test
-    let should_run = std::env::var("TEST_BLUETOOTH").unwrap_or("0".to_string());
-    if should_run != "1" {
-        return;
-    }
 
     // Create a new BLE peripheral.
     let mut ble = BlePeripheral::new(Some("TESTER".to_string()))
@@ -21,6 +16,7 @@ async fn main() {
     // Start the BLE peripheral engine.
     ble.start_engine().await.unwrap();
 
+    // Wait for the central device to subscribe to the peripheral.
     loop {
         if ble.is_subscribed().await {
             break;
@@ -28,27 +24,48 @@ async fn main() {
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     }
 
-    // Send a text message to the central device.
-    ble.send_message("test".into()).await;
-
-    // Asumming that the central device will send the same exact message back to the peripheral
-
-    // Wait for the same message to be received.
-    let message = ble.receive_message().await;
-    if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
-        log::info!("{}", message);
+    // Wait for the central device to send the Ready message.
+    loop {
+        let message = ble.receive_message().await;
+        if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
+            if message == "Ready" {
+                break;
+            }
+        }
     }
 
-    // Open an image file.
-    let image = tokio::fs::read("test_assets/test_image.jpg").await.unwrap();
+    let mut time_records: Vec<tokio::time::Duration> = Vec::new();
 
-    // Send the image file to the central device.
-    ble.send_message(image.into()).await;
+    for i in 0..10 {
+        // Open an image file.
+        let image = match i % 2 {
+            0 => tokio::fs::read("test_assets/test_image1.png")
+                .await
+                .unwrap(),
+            1 => tokio::fs::read("test_assets/test_image2.jpg")
+                .await
+                .unwrap(),
+            _ => unreachable!(),
+        };
 
-    // Wait for another message to be received.
-    let message = ble.receive_message().await;
-    if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
-        log::info!("{}", message);
+        // Save the current time.
+        let start_time = tokio::time::Instant::now();
+
+        // Send the image file to the central device.
+        ble.send_message(image.into()).await;
+
+        // Wait for another message to be received.
+        loop {
+            let message = ble.receive_message().await;
+            if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
+                if message == "Ready" {
+                    break;
+                }
+            }
+        }
+
+        // Save the duration taken
+        time_records.push(tokio::time::Instant::now() - start_time);
     }
 
     // Stop the BLE peripheral engine.
