@@ -136,6 +136,10 @@ impl BlePeripheral {
         let ble_thread = tokio::spawn(async move {
             pin_mut!(char_control);
             loop {
+                // Initialize the received message as an empty raw message
+                let mut received_message = BleMessage::Raw(Vec::new());
+
+                // Handle GATT, notify, and receive events concurrently
                 tokio::select! {
                     // Handle the GATT events
                     evt = char_control.next() => {
@@ -157,7 +161,7 @@ impl BlePeripheral {
                         }
                     },
 
-                    // Handle the notification interval
+                    // Handle the notification interval event
                     _notify_handle = notify_interval.tick() => {
                         if notifier_opt.is_some() {
                             let message: Option<BleMessage>;
@@ -193,23 +197,26 @@ impl BlePeripheral {
                             // Message ended
                             Ok(0) => {
                                 receiver_opt = None;
-                            }
-                            // Message received
-                            Ok(n) => {
-                                // Read the message
-                                let value:BleMessage = receive_buf[..n].to_vec().into();
-                                log::debug!("Received message: {}", value);
-
                                 // Push the message to the receive queue
                                 {
                                     let mut read_queue_writer = receive_queue_clone.write().await;
-                                    read_queue_writer.push_back(value);
+                                    read_queue_writer.push_back(received_message);
                                 }
 
                                 // Notify the receiver that a message has been received
                                 receive_notify.notify_one();
-
                             }
+
+                            // Message received
+                            Ok(n) => {
+                                // Read the message
+                                let value = receive_buf[..n].to_vec();
+                                log::debug!("Received message: {:?}", value);
+
+                                // Extend the received message with the new value
+                                received_message.extend_raw_bytes(value).unwrap();
+                            }
+
                             Err(err) => {
                                 log::error!("Read stream error: {}", &err);
                                 receiver_opt = None;

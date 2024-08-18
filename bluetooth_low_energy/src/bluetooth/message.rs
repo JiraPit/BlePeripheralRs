@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt;
 
 // Enum representing the message that can be sent over Bluetooth Low Energy
@@ -16,13 +17,27 @@ impl BleMessage {
         }
     }
 
-    /// Get the message as a string.
-    /// For Text messages, this will return the string as is.
-    /// For Raw messages, this return the UTF-8 encoded string of the bytes.
-    pub fn as_string(&self) -> String {
+    /// Convert from raw bytes message to a text message.
+    /// Return an error if the message is not raw bytes.
+    pub fn convert_to_text(self) -> Result<Self, Box<dyn Error>> {
         match self {
-            BleMessage::Text(s) => s.clone(),
-            BleMessage::Raw(v) => String::from_utf8_lossy(v).to_string(),
+            BleMessage::Raw(v) => {
+                let s = String::from_utf8_lossy(&v).to_string();
+                Ok(BleMessage::Text(s))
+            }
+            _ => Err("Message must be raw bytes in order to convert to text".into()),
+        }
+    }
+
+    /// Extend the raw bytes with another byte vector.
+    /// Return an error if the message not raw bytes
+    pub fn extend_raw_bytes(&mut self, bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        match self {
+            BleMessage::Raw(v) => {
+                v.extend(bytes);
+                Ok(())
+            }
+            _ => Err("Message must be raw bytes in order to extend them".into()),
         }
     }
 }

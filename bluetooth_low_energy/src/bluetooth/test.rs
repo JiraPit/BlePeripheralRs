@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod bluetooth_test {
+    use super::super::BleMessage;
     use super::super::BlePeripheral;
 
     #[tokio::test]
@@ -18,14 +19,20 @@ mod bluetooth_test {
         // Start the BLE peripheral engine.
         ble.start_engine().await.unwrap();
 
-        // Send a message to the central device.
+        // Send a text message to the central device.
         ble.send_message("test".into()).await;
 
         // Asumming that the central device will send the same exact message back to the peripheral
 
         // Wait for the same message to be received.
         let message = ble.receive_message().await;
-        assert_eq!(message.as_string(), "test");
+
+        // Check if the message is text and if it is the same message that was sent.
+        if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
+            assert_eq!(message, "test");
+        } else {
+            panic!("Message is not text");
+        }
 
         // Stop the BLE peripheral engine.
         ble.stop_engine().await;
