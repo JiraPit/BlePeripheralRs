@@ -1,4 +1,4 @@
-mod message;
+pub mod message;
 mod test;
 
 use bluer::{
@@ -137,7 +137,7 @@ impl BlePeripheral {
             pin_mut!(char_control);
             loop {
                 // Initialize the received message as an empty raw message
-                let mut received_message = BleMessage::Raw(Vec::new());
+                // let mut received_message = BleMessage::Raw(Vec::new());
 
                 // Handle GATT, notify, and receive events concurrently
                 tokio::select! {
@@ -147,7 +147,7 @@ impl BlePeripheral {
                             // Handle the write event
                             Some(CharacteristicControlEvent::Write(req)) => {
                                 log::debug!("Accepting write request event with MTU {}", req.mtu());
-                                receive_buf = Vec::new();
+                                receive_buf = vec![0;100_000];
                                 receiver_opt = Some(req.accept().unwrap());
                             },
                             // Handle the notify event
@@ -190,7 +190,7 @@ impl BlePeripheral {
                     // Handle the receive event
                     receive_handle = async {
                         match &mut receiver_opt {
-                            Some(receiver) => receiver.read_to_end(&mut receive_buf).await,
+                            Some(receiver) => receiver.read(&mut receive_buf).await,
                             None => future::pending().await,
                         }
                     } => {
@@ -207,7 +207,8 @@ impl BlePeripheral {
                                 log::debug!("Received message: {:?}", bytes);
 
                                 // Extend the received message with the new value
-                                received_message.extend_raw_bytes(bytes).unwrap();
+                                // received_message.extend_raw_bytes(bytes).unwrap();
+                                let received_message = BleMessage::Raw(bytes);
 
                                 // Push the message to the receive queue
                                 {

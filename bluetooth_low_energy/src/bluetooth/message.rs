@@ -30,7 +30,7 @@ impl BleMessage {
     }
 
     /// Extend the raw bytes with another byte vector.
-    /// Return an error if the message not raw bytes
+    /// Return an error if the message is not raw bytes
     pub fn extend_raw_bytes(&mut self, bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
         match self {
             BleMessage::Raw(v) => {
