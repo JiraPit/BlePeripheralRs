@@ -136,9 +136,6 @@ impl BlePeripheral {
         let ble_thread = tokio::spawn(async move {
             pin_mut!(char_control);
             loop {
-                // Initialize the received message as an empty raw message
-                // let mut received_message = BleMessage::Raw(Vec::new());
-
                 // Handle GATT, notify, and receive events concurrently
                 tokio::select! {
                     // Handle the GATT events
@@ -147,7 +144,7 @@ impl BlePeripheral {
                             // Handle the write event
                             Some(CharacteristicControlEvent::Write(req)) => {
                                 log::debug!("Accepting write request event with MTU {}", req.mtu());
-                                receive_buf = vec![0;100_000];
+                                receive_buf = vec![0;req.mtu()];
                                 receiver_opt = Some(req.accept().unwrap());
                             },
                             // Handle the notify event
@@ -164,6 +161,7 @@ impl BlePeripheral {
                     // Handle the notification interval event
                     _notify_handle = notify_interval.tick() => {
                         if notifier_opt.is_some() {
+                            // Get the next message from the send queue
                             let message: Option<BleMessage>;
                             {
                                 let mut send_queue_writer =
@@ -195,19 +193,13 @@ impl BlePeripheral {
                         }
                     } => {
                         match receive_handle {
-                            // Message ended
-                            Ok(0) => {
-                                receiver_opt = None;
-                            }
-
                             // Message received
                             Ok(n) => {
                                 // Read the message
                                 let bytes = receive_buf[..n].to_vec();
                                 log::debug!("Received message: {:?}", bytes);
 
-                                // Extend the received message with the new value
-                                // received_message.extend_raw_bytes(bytes).unwrap();
+                                // Create a BLE message from the received bytes
                                 let received_message = BleMessage::Raw(bytes);
 
                                 // Push the message to the receive queue
@@ -222,9 +214,9 @@ impl BlePeripheral {
 
                             Err(err) => {
                                 log::error!("Read stream error: {}", &err);
-                                receiver_opt = None;
                             }
                         }
+                        receiver_opt = None;
                     }
                 }
             }
@@ -247,7 +239,7 @@ impl BlePeripheral {
     }
 
     /// Send a message to the central device.
-    /// This does not send the message immediately, but queues it for sending on the read event.
+    /// This does not send the message immediately, but queues it for sending later (usually within 50ms).
     /// Messages are sent in the order they are queued.
     pub async fn send_message(&self, message: BleMessage) {
         let mut send_queue = self.send_queue.write().await;

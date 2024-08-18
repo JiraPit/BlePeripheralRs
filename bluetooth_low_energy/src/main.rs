@@ -35,8 +35,18 @@ async fn main() {
 
     // Wait for the same message to be received.
     let message = ble.receive_message().await;
+    if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
+        log::info!("{}", message);
+    }
 
-    // Check if the message is text and if it is the same message that was sent.
+    // Open an image file.
+    let image = tokio::fs::read("test_assets/test_image.jpg").await.unwrap();
+
+    // Send the image file to the central device.
+    ble.send_message(image.into()).await;
+
+    // Wait for another message to be received.
+    let message = ble.receive_message().await;
     if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
         log::info!("{}", message);
     }
