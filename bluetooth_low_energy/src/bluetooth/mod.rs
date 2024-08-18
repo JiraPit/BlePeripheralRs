@@ -147,7 +147,7 @@ impl BlePeripheral {
                             // Handle the write event
                             Some(CharacteristicControlEvent::Write(req)) => {
                                 log::debug!("Accepting write request event with MTU {}", req.mtu());
-                                receive_buf = vec![0; req.mtu()];
+                                receive_buf = Vec::new();
                                 receiver_opt = Some(req.accept().unwrap());
                             },
                             // Handle the notify event
@@ -176,6 +176,7 @@ impl BlePeripheral {
                                 log::debug!("Notifying message {:x?}", message);
                                 let message_bytes = message.unwrap().take_bytes();
 
+                                // Write the message to the notify opterator
                                 if let Err(err) = notifier_opt.as_mut().unwrap().write_all(&message_bytes).await {
                                     log::error!("Write failed: {}", &err);
                                     notifier_opt = None;
@@ -189,14 +190,25 @@ impl BlePeripheral {
                     // Handle the receive event
                     receive_handle = async {
                         match &mut receiver_opt {
-                            Some(receiver) => receiver.read(&mut receive_buf).await,
-                            _ => future::pending().await,
+                            Some(receiver) => receiver.read_to_end(&mut receive_buf).await,
+                            None => future::pending().await,
                         }
                     } => {
                         match receive_handle {
                             // Message ended
                             Ok(0) => {
                                 receiver_opt = None;
+                            }
+
+                            // Message received
+                            Ok(n) => {
+                                // Read the message
+                                let bytes = receive_buf[..n].to_vec();
+                                log::debug!("Received message: {:?}", bytes);
+
+                                // Extend the received message with the new value
+                                received_message.extend_raw_bytes(bytes).unwrap();
+
                                 // Push the message to the receive queue
                                 {
                                     let mut read_queue_writer = receive_queue_clone.write().await;
@@ -205,16 +217,6 @@ impl BlePeripheral {
 
                                 // Notify the receiver that a message has been received
                                 receive_notify.notify_one();
-                            }
-
-                            // Message received
-                            Ok(n) => {
-                                // Read the message
-                                let value = receive_buf[..n].to_vec();
-                                log::debug!("Received message: {:?}", value);
-
-                                // Extend the received message with the new value
-                                received_message.extend_raw_bytes(value).unwrap();
                             }
 
                             Err(err) => {
