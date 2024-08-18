@@ -65,8 +65,15 @@ async fn main() {
         }
 
         // Save the duration taken
-        time_records.push(tokio::time::Instant::now() - start_time);
+        let duration = tokio::time::Instant::now() - start_time;
+        time_records.push(duration);
+        println!("Duration for image {}: {:?}", i, duration);
     }
+
+    // Calculate the average duration.
+    let sum: tokio::time::Duration = time_records.iter().sum();
+    let average = sum / time_records.len() as u32;
+    println!("Average duration: {:?}", average);
 
     // Stop the BLE peripheral engine.
     ble.stop_engine().await;
