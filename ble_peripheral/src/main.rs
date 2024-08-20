@@ -36,7 +36,7 @@ async fn main() {
 
     let mut time_records: Vec<tokio::time::Duration> = Vec::new();
 
-    for i in 0..10 {
+    for i in 0..20 {
         // Open an image file.
         let image = match i % 2 {
             0 => tokio::fs::read("test_assets/test_image1.jpg")
