@@ -63,6 +63,13 @@ impl From<Vec<u8>> for BleMessage {
     }
 }
 
+impl From<usize> for BleMessage {
+    /// Automatically convert a usize to a BleMessage
+    fn from(value: usize) -> Self {
+        Self::Text(value.to_string())
+    }
+}
+
 impl fmt::Display for BleMessage {
     /// Display the message as a string
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

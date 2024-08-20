@@ -51,6 +51,9 @@ async fn main() {
         // Save the current time.
         let start_time = tokio::time::Instant::now();
 
+        // Send the image file size to the central device.
+        ble.send_message(image.len().into()).await;
+
         // Send the image file to the central device.
         ble.send_message(image.into()).await;
 
