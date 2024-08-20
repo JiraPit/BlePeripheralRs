@@ -94,7 +94,8 @@ impl BlePeripheral {
                 characteristics: vec![Characteristic {
                     uuid: CHARACTERISTIC_UUID,
                     write: Some(CharacteristicWrite {
-                        write_without_response: true,
+                        write: true,
+                        write_without_response: false,
                         method: CharacteristicWriteMethod::Io,
                         ..Default::default()
                     }),
