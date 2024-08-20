@@ -39,7 +39,7 @@ async fn main() {
     for i in 0..10 {
         // Open an image file.
         let image = match i % 2 {
-            0 => tokio::fs::read("test_assets/test_image1.png")
+            0 => tokio::fs::read("test_assets/test_image1.jpg")
                 .await
                 .unwrap(),
             1 => tokio::fs::read("test_assets/test_image2.jpg")
