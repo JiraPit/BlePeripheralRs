@@ -57,15 +57,15 @@ async fn main() {
         // Send the image file to the central device.
         ble.send_message(image.into()).await;
 
-        // Wait for another message to be received.
-        loop {
-            let message = ble.receive_message().await;
-            if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
-                if message == "Ready" {
-                    break;
-                }
-            }
-        }
+        // // Wait for another message to be received.
+        // loop {
+        //     let message = ble.receive_message().await;
+        //     if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
+        //         if message == "Ready" {
+        //             break;
+        //         }
+        //     }
+        // }
 
         // Save the duration taken
         let duration = tokio::time::Instant::now() - start_time;
