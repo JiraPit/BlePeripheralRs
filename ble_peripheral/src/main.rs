@@ -48,12 +48,16 @@ async fn main() {
         // Save the current time.
         let start_time = tokio::time::Instant::now();
 
-        // Resize the image and convert it to a byte array
-        let img = img.resize_exact(105, 140, image::imageops::FilterType::Nearest);
+        // Resize the image
+        let img = img.resize_exact(60, 80, image::imageops::FilterType::Nearest);
 
+        // Convert the image to a byte array.
         let mut bytes: Vec<u8> = Vec::new();
         img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
             .unwrap();
+
+        let duration = tokio::time::Instant::now() - start_time;
+        println!("Image preprocessed {}: {:?}", i, duration);
 
         // Send the image file size to the central device.
         ble.send_message(bytes.len().into()).await;
