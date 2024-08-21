@@ -49,11 +49,11 @@ async fn main() {
         let start_time = tokio::time::Instant::now();
 
         // Resize the image
-        let img = img.resize_exact(60, 80, image::imageops::FilterType::Nearest);
+        let img = img.resize_exact(75, 100, image::imageops::FilterType::Nearest);
 
         // Convert the image to a byte array.
         let mut bytes: Vec<u8> = Vec::new();
-        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
             .unwrap();
 
         let duration = tokio::time::Instant::now() - start_time;
