@@ -15,12 +15,10 @@ use bluer::{
 };
 use futures::{future, pin_mut, StreamExt};
 use message::BleMessage;
-use std::collections::VecDeque;
 use std::error::Error;
-use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{Notify, RwLock},
+    sync::{mpsc, watch},
     task::JoinHandle,
 };
 use uuid::Uuid;
@@ -32,35 +30,32 @@ static CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x00002AC400001000800000805F9
 /// For creating a BLE peripheral device that can be connected to a central device.
 pub struct BlePeripheral {
     pub alias: Option<String>,
-    send_queue: Arc<RwLock<VecDeque<BleMessage>>>,
-    receive_queue: Arc<RwLock<VecDeque<BleMessage>>>,
-    receive_notify: Arc<Notify>,
+    sender: Option<mpsc::UnboundedSender<BleMessage>>,
+    receiver: Option<mpsc::UnboundedReceiver<BleMessage>>,
     app_handler: Option<ApplicationHandle>,
     adv_handler: Option<AdvertisementHandle>,
     ble_thread: Option<JoinHandle<()>>,
-    subscribed: Arc<RwLock<bool>>,
+    subscribed_watcher: Option<watch::Receiver<bool>>,
 }
 
 impl BlePeripheral {
     /// Create a new BLE peripheral with the given alias.
     pub async fn new(alias: Option<String>) -> Result<BlePeripheral, Box<dyn Error>> {
-        let send_queue = Arc::new(RwLock::new(VecDeque::new()));
-        let read_queue = Arc::new(RwLock::new(VecDeque::new()));
-        let read_notify = Arc::new(Notify::new());
+        let sender = None;
+        let reader = None;
         let app_handler = None;
         let adv_handler = None;
         let ble_thread = None;
-        let subscribed = Arc::new(RwLock::new(false));
+        let subscribed_watcher = None;
 
         Ok(BlePeripheral {
+            sender,
+            receiver: reader,
             alias,
-            send_queue,
-            receive_queue: read_queue,
-            receive_notify: read_notify,
             app_handler,
             adv_handler,
             ble_thread,
-            subscribed,
+            subscribed_watcher,
         })
     }
 
@@ -117,27 +112,27 @@ impl BlePeripheral {
         self.adv_handler = Some(adapter.advertise(adv).await?);
         self.app_handler = Some(adapter.serve_gatt_application(app).await?);
 
-        // Make sure that the sucscribed flag starts as false
-        {
-            let mut subscribed_writer = self.subscribed.write().await;
-            *subscribed_writer = false;
-        }
+        // Initialize the send channel
+        let (send_tx, mut send_rx) = mpsc::unbounded_channel();
+        self.sender = Some(send_tx);
 
-        // Initialize the read buffer and notifier/reciever handles
-        let mut receive_buf = Vec::new();
-        let mut receiver_opt: Option<CharacteristicReader> = None;
-        let mut notifier_opt: Option<CharacteristicWriter> = None;
-        let mut notify_interval = tokio::time::interval(tokio::time::Duration::from_millis(50));
+        // Initialize the receive channel
+        let (receive_tx, receive_rx) = mpsc::unbounded_channel();
+        self.receiver = Some(receive_rx);
 
-        // Clone the read queue and notify handle
-        let receive_queue_clone = Arc::clone(&self.receive_queue);
-        let receive_notify = Arc::clone(&self.receive_notify);
-        let send_queue_clone = Arc::clone(&self.send_queue);
-        let subscribed_clone = Arc::clone(&self.subscribed);
+        // Initialize the subscribed watcher
+        let (subscribed_watch_tx, subscribed_watch_rx) = watch::channel(false);
+        self.subscribed_watcher = Some(subscribed_watch_rx);
 
         // Start the BLE thread
         let ble_thread = tokio::spawn(async move {
             pin_mut!(char_control);
+
+            // Initialize the read buffer and notifier/reciever operators
+            let mut receive_buf = Vec::new();
+            let mut receiver_opt: Option<CharacteristicReader> = None;
+            let mut notifier_opt: Option<CharacteristicWriter> = None;
+
             loop {
                 // Handle GATT, notify, and receive events concurrently
                 tokio::select! {
@@ -154,69 +149,50 @@ impl BlePeripheral {
                             Some(CharacteristicControlEvent::Notify(notifier)) => {
                                 log::debug!("Accepting notify request event with MTU {}", notifier.mtu());
                                 notifier_opt = Some(notifier);
-                                let mut subscribed_writer = subscribed_clone.write().await;
-                                *subscribed_writer = true;
+                                subscribed_watch_tx.send(true).unwrap();
                             },
-                            None => break,
+                            _ => {},
                         }
                     },
 
-                    // Handle the notification interval event
-                    _notify_handle = notify_interval.tick() => {
-                        if notifier_opt.is_some() {
-                            // Get the next message from the send queue
-                            let message: Option<BleMessage>;
-                            {
-                                let mut send_queue_writer =
-                                    send_queue_clone.write().await;
-                                message = send_queue_writer.pop_front();
-                            }
+                    // Handle the notification event
+                    notify_message = send_rx.recv() => {
+                        if notifier_opt.is_some() && notify_message.is_some() {
+                            // Convert the message to a byte array
+                            log::debug!("Notifying message {:x?}", notify_message);
+                            let message_bytes = notify_message.unwrap().take_bytes();
 
-                            if message.is_some() {
-                                // Convert the message to a byte array
-                                log::debug!("Notifying message {:x?}", message);
-                                let message_bytes = message.unwrap().take_bytes();
-
-                                // Write the message to the notify opterator
-                                if let Err(err) = notifier_opt.as_mut().unwrap().write_all(&message_bytes).await {
-                                    log::error!("Write failed: {}", &err);
-                                    notifier_opt = None;
-                                    let mut subscribed_writer = subscribed_clone.write().await;
-                                    *subscribed_writer = false;
-                                }
+                            // Write the message to the notify opterator
+                            if let Err(err) = notifier_opt.as_mut().unwrap().write_all(&message_bytes).await {
+                                log::error!("Write failed: {}", &err);
+                                notifier_opt = None;
+                                subscribed_watch_tx.send(false).unwrap();
                             }
                         }
                     },
 
                     // Handle the receive event
-                    receive_handle = async {
+                    received_buffer = async {
                         match &mut receiver_opt {
                             Some(receiver) => receiver.read(&mut receive_buf).await,
                             None => future::pending().await,
                         }
                     } => {
-                        match receive_handle {
+                        match received_buffer {
                             // Message received
                             Ok(n) => {
                                 // Read the message
-                                let bytes = receive_buf[..n].to_vec();
-                                log::debug!("Received message: {:?}", bytes);
+                                let received_message = receive_buf[..n].to_vec();
+                                log::debug!("Received message: {:?}", received_message);
 
-                                // Create a BLE message from the received bytes
-                                let received_message = BleMessage::Raw(bytes);
-
-                                // Push the message to the receive queue
-                                {
-                                    let mut read_queue_writer = receive_queue_clone.write().await;
-                                    read_queue_writer.push_back(received_message);
+                                // Send the message to the receiver
+                                if let Err(err) = receive_tx.send(received_message.into()) {
+                                    log::error!("Receive message error: {:?}", &err);
                                 }
-
-                                // Notify the receiver that a message has been received
-                                receive_notify.notify_one();
                             }
 
                             Err(err) => {
-                                log::error!("Read stream e:rror: {}", &err);
+                                log::error!("Read stream error: {}", &err);
                             }
                         }
                         receiver_opt = None;
@@ -242,38 +218,26 @@ impl BlePeripheral {
     }
 
     /// Send a message to the central device.
-    /// This does not send the message immediately, but queues it for sending later (usually within 50ms).
-    /// Messages are sent in the order they are queued.
-    pub async fn send_message<M>(&self, message: M)
+    pub async fn send_message<M>(&self, message: M) -> Result<(), Box<dyn Error>>
     where
         M: Into<BleMessage>,
     {
-        let mut send_queue = self.send_queue.write().await;
-        send_queue.push_back(message.into());
+        let sender = match self.sender.as_ref() {
+            Some(sender) => sender,
+            None => {
+                return Err("Send channel not initialized".into());
+            }
+        };
+        sender.send(message.into())?;
+        Ok(())
     }
 
     /// Receive a message from the central device.
     /// Receiving is blocking and will wait for the message if it is not ready.
     /// If there are multiple messages, the oldest one will be returned first.
-    pub async fn receive_message(&self) -> BleMessage {
-        let mut message;
+    pub async fn receive_message(&mut self) -> BleMessage {
         loop {
-            tokio::select! {
-
-                // Try reading the message if no message notification is received
-                _ = self.receive_notify.notified()=> {
-                    let mut read_queue_writer = self.receive_queue.write().await;
-                    message = read_queue_writer.pop_front();
-                },
-
-                // Also try reading the message after a certain delay
-                // This ensures that no message is left unread
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
-                    let mut read_queue_writer = self.receive_queue.write().await;
-                    message = read_queue_writer.pop_front();
-                },
-            }
-
+            let message = self.receiver.as_mut().unwrap().recv().await;
             // Check if the message received is not empty, otherwise continue the loop
             if let Some(message) = message {
                 return message;
@@ -283,7 +247,10 @@ impl BlePeripheral {
 
     /// Check if the BLE peripheral is subscribed to notifications.
     pub async fn is_subscribed(&self) -> bool {
-        let subscribed_reader = self.subscribed.read().await;
-        *subscribed_reader
+        let subscribed_watcher = match self.subscribed_watcher.as_ref() {
+            Some(watcher) => watcher,
+            None => return false,
+        };
+        *subscribed_watcher.borrow()
     }
 }
