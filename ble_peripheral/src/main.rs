@@ -53,7 +53,7 @@ async fn main() {
 
         // Convert the image to a byte array.
         let mut bytes: Vec<u8> = Vec::new();
-        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
             .unwrap();
 
         let duration = tokio::time::Instant::now() - start_time;
@@ -87,7 +87,7 @@ async fn main() {
     // Calculate the average duration.
     let sum: tokio::time::Duration = time_records.iter().sum();
     let average = sum / time_records.len() as u32;
-    println!("Average duration: {:?}", average);
+    println!("Average total delay: {:?}", average);
 
     // Stop the BLE peripheral engine.
     ble.stop_engine().await;
