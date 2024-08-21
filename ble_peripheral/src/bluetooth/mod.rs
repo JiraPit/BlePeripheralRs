@@ -129,7 +129,7 @@ impl BlePeripheral {
             pin_mut!(char_control);
 
             // Initialize the read buffer and notifier/reciever operators
-            let mut receive_buf = Vec::new();
+            let mut receive_buffer = Vec::new();
             let mut receiver_opt: Option<CharacteristicReader> = None;
             let mut notifier_opt: Option<CharacteristicWriter> = None;
 
@@ -142,7 +142,7 @@ impl BlePeripheral {
                             // Handle the write event
                             Some(CharacteristicControlEvent::Write(req)) => {
                                 log::debug!("Accepting write request event with MTU {}", req.mtu());
-                                receive_buf = vec![0;req.mtu()];
+                                receive_buffer = vec![0;req.mtu()];
                                 receiver_opt = Some(req.accept().unwrap());
                             },
                             // Handle the notify event
@@ -172,17 +172,17 @@ impl BlePeripheral {
                     },
 
                     // Handle the receive event
-                    received_buffer = async {
+                    received_length = async {
                         match &mut receiver_opt {
-                            Some(receiver) => receiver.read(&mut receive_buf).await,
+                            Some(receiver) => receiver.read(&mut receive_buffer).await,
                             None => future::pending().await,
                         }
                     } => {
-                        match received_buffer {
+                        match received_length {
                             // Message received
                             Ok(n) => {
                                 // Read the message
-                                let received_message = receive_buf[..n].to_vec();
+                                let received_message = receive_buffer[..n].to_vec();
                                 log::debug!("Received message: {:?}", received_message);
 
                                 // Send the message to the receiver
