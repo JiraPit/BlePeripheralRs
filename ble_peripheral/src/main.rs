@@ -2,6 +2,7 @@ mod bluetooth;
 
 use bluetooth::message::BleMessage;
 use bluetooth::BlePeripheral;
+use std::io::Cursor;
 use std::vec::Vec;
 
 #[tokio::main]
@@ -36,30 +37,34 @@ async fn main() {
 
     let mut time_records: Vec<tokio::time::Duration> = Vec::new();
 
-    for i in 0..20 {
+    for i in 0..10 {
         // Open an image file.
-        let image = match i % 2 {
-            0 => tokio::fs::read("test_assets/test_image1.jpg")
-                .await
-                .unwrap(),
-            1 => tokio::fs::read("test_assets/test_image2.jpg")
-                .await
-                .unwrap(),
+        let img = match i % 2 {
+            0 => image::open("test_assets/test_image1.jpg").unwrap(),
+            1 => image::open("test_assets/test_image2.jpg").unwrap(),
             _ => unreachable!(),
         };
 
         // Save the current time.
         let start_time = tokio::time::Instant::now();
 
+        // Resize the image and convert it to a byte array
+        let img = img.resize_exact(105, 140, image::imageops::FilterType::Nearest);
+
+        let mut bytes: Vec<u8> = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .unwrap();
+
         // Send the image file size to the central device.
-        ble.send_message(image.len().into()).await;
+        ble.send_message(bytes.len().into()).await;
 
         // Send the image file to the central device.
-        ble.send_message(image.into()).await;
+        ble.send_message(bytes.into()).await;
+
         let duration = tokio::time::Instant::now() - start_time;
         println!("Image sent {}: {:?}", i, duration);
 
-        // Wait for another message to be received.
+        // Wait for a confirmation to be received.
         loop {
             let message = ble.receive_message().await;
             if let BleMessage::Text(message) = message.convert_to_text().unwrap() {
