@@ -117,7 +117,7 @@ impl BlePeripheral {
         self.adv_handler = Some(adapter.advertise(adv).await?);
         self.app_handler = Some(adapter.serve_gatt_application(app).await?);
 
-        // Make sure that the sucscribed flaf starts as false
+        // Make sure that the sucscribed flag starts as false
         {
             let mut subscribed_writer = self.subscribed.write().await;
             *subscribed_writer = false;
@@ -216,7 +216,7 @@ impl BlePeripheral {
                             }
 
                             Err(err) => {
-                                log::error!("Read stream error: {}", &err);
+                                log::error!("Read stream e:rror: {}", &err);
                             }
                         }
                         receiver_opt = None;
@@ -244,9 +244,12 @@ impl BlePeripheral {
     /// Send a message to the central device.
     /// This does not send the message immediately, but queues it for sending later (usually within 50ms).
     /// Messages are sent in the order they are queued.
-    pub async fn send_message(&self, message: BleMessage) {
+    pub async fn send_message<M>(&self, message: M)
+    where
+        M: Into<BleMessage>,
+    {
         let mut send_queue = self.send_queue.write().await;
-        send_queue.push_back(message);
+        send_queue.push_back(message.into());
     }
 
     /// Receive a message from the central device.

@@ -20,7 +20,7 @@ mod bluetooth_test {
         ble.start_engine().await.unwrap();
 
         // Send a text message to the central device.
-        ble.send_message("test".into()).await;
+        ble.send_message("test").await;
 
         // Asumming that the central device will send the same exact message back to the peripheral
 

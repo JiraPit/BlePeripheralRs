@@ -60,10 +60,10 @@ async fn main() {
         println!("Image preprocessed {}: {:?}", i, duration);
 
         // Send the image file size to the central device.
-        ble.send_message(bytes.len().into()).await;
+        ble.send_message(bytes.len()).await;
 
         // Send the image file to the central device.
-        ble.send_message(bytes.into()).await;
+        ble.send_message(bytes).await;
 
         let duration = tokio::time::Instant::now() - start_time;
         println!("Image sent {}: {:?}", i, duration);
