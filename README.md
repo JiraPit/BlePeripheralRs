@@ -1,4 +1,4 @@
-# PSNL-BluetoothLE
+# BlePeripheralRs
 
 An example Rust implementation of Bluetooth Low Energy (BLE) Peripheral Engine.
 
